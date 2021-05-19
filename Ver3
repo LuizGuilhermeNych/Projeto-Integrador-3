@@ -1,0 +1,99 @@
+#include "EmonLib.h"
+#include <Wire.h> 
+#include <WiFi.h>
+#include <AWS_IOT.h>
+
+//Definição do sensor de corrente
+EnergyMonitor SCT013;
+
+//Definição de credenciais para a rede WiFi
+#define WIFI_SSID "Nycholas"
+#define WIFI_PASSWD "Kfi070380"
+
+//Definição de credenciais para comunicação MQTT
+#define CLIENT_ID "Medição_Corrente"
+#define MQTT_TOPIC "$aws/things/SCT013_Beta/shadow/update"
+#define AWS_HOST "a2nbtw0zv490f2-ats.iot.us-west-2.amazonaws.com"
+
+AWS_IOT aws;
+
+//Definição do pino analógico conectado ao SCT-013
+int pinSCT = 34;   
+
+//Definição de variáveis para cálculos aritiméticos 
+int tensao = 127;
+int potencia;
+ 
+void setup()
+{
+    //Inicializa sensor e monitor
+    Serial.begin(115200);
+    
+    SCT013.current(pinSCT, 60.607);
+
+//==========Estabelecendo conexão com a rede WiFi==========
+    Serial.print("\n Inicializando WiFi: Conectando-se a ");
+    Serial.println(WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWD);
+    Serial.print(" ");
+    while(WiFi.status() != WL_CONNECTED){
+      Serial.print(".");
+      delay(500);
+    }
+    Serial.println("\n Conectado.\n Concluído");
+
+//==========Estabelecendo conexão com a AWS==========
+    Serial.println("\n Iniciando conexão com a AWS...");
+    if(aws.connect(AWS_HOST, CLIENT_ID) ==0){
+      Serial.println(" Conectado à AWS\n Concluído.");
+    }
+    else{
+      Serial.println(" Conexão falhou.");
+    }
+    Serial.println(" Concluído");
+}
+ 
+void loop()
+{
+    // Calcula o valor da Corrente
+    double Irms = SCT013.calcIrms(1480);   
+
+    // Calcula o valor da Potencia Instantanea
+    potencia = Irms * tensao;              
+
+    Irms = 0;
+
+    //Realiza leitura de valores calculados no monitor serial
+    Serial.println("Corr. = ");
+    Serial.println(Irms);
+    Serial.println(" A");
+      
+    Serial.println("Pot. = ");
+    Serial.println(potencia);
+    Serial.println(" W");
+      
+    delay(500);
+ 
+
+
+//Criar payload em string para publicar informações no broker
+String Corrente_potencia = "Energia = ";
+  Corrente_potencia += String (Irms);
+  Corrente_potencia += "Corrente = ";
+  Corrente_potencia += String (potencia);
+  Corrente_potencia += " W";
+
+char payload[40];
+Corrente_potencia.toCharArray(payload, 40);
+
+Serial.println("Publicando: ");
+Serial.println(payload);
+  if(aws.publish(MQTT_TOPIC, payload) ==0) {
+    Serial.print("Sucesso!");
+  }
+  else{
+    Serial.println("Falhou!");
+  }
+
+delay (1000);
+}
